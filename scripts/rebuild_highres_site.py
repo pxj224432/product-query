@@ -308,6 +308,18 @@ def main():
 .detail-images img{width:100%;max-width:100%;max-height:70vh;object-fit:contain;border-radius:8px;background:#f8f8f8;margin:0}
 """
     html = old_html
+    html = re.sub(r"\.password-overlay\{[^}]+\}\n", "", html)
+    html = re.sub(r"\.password-overlay\.hide\{[^}]+\}\n", "", html)
+    html = re.sub(r"\.password-box(?: [^{]+)?\{[^}]+\}\n", "", html)
+    html = re.sub(r"<div class=\"password-overlay\" id=\"passwordOverlay\">[\s\S]*?</div>\n</div>\n", "", html)
+    html = re.sub(r"const CORRECT_PASSWORD = [^\n]*\n", "", html)
+    html = re.sub(
+        r"\nfunction checkPassword\(\) \{[\s\S]*?if \(localStorage\.getItem\(\"productQueryAuth\"\) === \"true\"\) \{\n"
+        r"    document\.getElementById\(\"passwordOverlay\"\)\.classList\.add\(\"hide\"\);\n"
+        r"\}\n",
+        "\n",
+        html,
+    )
     html = re.sub(r"\.product-image\{[^}]+\}", ".product-image{width:100%;height:200px;object-fit:contain;background:#f0f0f0}", html)
     html = re.sub(r"\.detail-images img\{[^}]+\}", ".detail-images img{width:100%;max-width:100%;max-height:70vh;object-fit:contain;border-radius:8px;background:#f8f8f8;margin:0}", html)
     if ".image-wrap" not in html:
