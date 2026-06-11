@@ -37,6 +37,11 @@ DATA_FIELDS = {
     "包装辅料明细": "package_detail",
 }
 
+FIELD_ALIASES = {
+    "核心卖点": ("核心卖点", "卖点升级\n（卖点升级的标红）", "卖点升级"),
+    "包装方式": ("包装方式", "包装"),
+}
+
 VISIBLE_SHEETS = {"保暖", "冰丝内裤", "棉+莫代尔内裤", "袜子", "家居服"}
 MAX_IMAGE_EDGE = 1600
 JPEG_QUALITY = 86
@@ -205,6 +210,7 @@ def main():
     old_by_key = {(p.get("sheet"), p.get("code")): p for p in old_products}
 
     image_map = {}
+    data_map = {}
     image_exports = {}
     missing_package_images = 0
 
@@ -263,6 +269,15 @@ def main():
                 if not code:
                     continue
 
+                product_data = {}
+                for source_field, output_field in DATA_FIELDS.items():
+                    aliases = FIELD_ALIASES.get(source_field, (source_field,))
+                    col = next((headers[name] for name in aliases if name in headers), None)
+                    if col is None:
+                        continue
+                    product_data[output_field] = str(row.get(col, "")).strip()
+                data_map[(sheet["name"], code)] = product_data
+
                 product_images = {}
 
                 for role, col in (("style", style_col), ("package", package_col)):
@@ -292,6 +307,8 @@ def main():
     products = []
     for old in old_products:
         product = dict(old)
+        mapped_data = data_map.get((product.get("sheet"), product.get("code")), {})
+        product.update(mapped_data)
         mapped = image_map.get((product.get("sheet"), product.get("code")), {})
         if mapped.get("package_image"):
             product["package_image"] = mapped["package_image"]
