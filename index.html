@@ -26,7 +26,7 @@ button,input{font:inherit} button{cursor:pointer} .top{background:linear-gradien
 </style>
 </head>
 <body>
-<header class="top"><div class="top-inner"><div class="eyebrow">MUAN PRODUCT LIBRARY</div><h1>商品资料表</h1><div class="search"><input id="query" placeholder="输入货号，例如 660002" autocomplete="off"><button id="search">查询</button></div></div></header>
+<header class="top"><div class="top-inner"><div class="eyebrow">MUAN PRODUCT LIBRARY</div><h1>商品资料表</h1><div class="search"><input id="query" placeholder="输入完整或部分货号，例如 6908" autocomplete="off"><button id="search">查询</button></div></div></header>
 <main class="wrap"><div class="toolbar"><div id="stats"></div><button class="reset" id="reset">显示全部</button></div><section class="grid" id="grid"></section><div class="more-wrap"><button id="more" hidden>加载更多</button></div></main>
 <div class="shade" id="shade"><article class="modal"><div class="modal-head"><h2 id="modal-title"></h2><button class="close" id="close" aria-label="关闭">×</button></div><div id="modal-body"></div></article></div>
 <div class="chart-overlay" id="chart-overlay" role="dialog" aria-modal="true" aria-label="放大尺码表"><button class="chart-overlay-close" id="chart-overlay-close" aria-label="关闭放大图">×</button><img id="chart-preview" alt="放大尺码表"></div>
@@ -77,8 +77,19 @@ function filter(syncUrl = true) {
   const q = raw.toLowerCase();
   if (syncUrl) history.replaceState(null, "", raw ? `?code=${encodeURIComponent(raw)}` : location.pathname);
   if (!q) return render(products);
-  const exact = products.filter(p => String(p.code || "").trim().toLowerCase() === q);
-  render(exact.length ? exact : products.filter(p => [p.code,p.color,p.material,p.highlight].join(" ").toLowerCase().includes(q)));
+  const compact = q.replace(/[^a-z0-9\u4e00-\u9fff]/g, "");
+  const matches = products.map((p, index) => {
+    const code = String(p.code || "").trim().toLowerCase();
+    const compactCode = code.replace(/[^a-z0-9\u4e00-\u9fff]/g, "");
+    const other = [p.color,p.material,p.highlight].join(" ").toLowerCase();
+    let rank = 99;
+    if (code === q || compactCode === compact) rank = 0;
+    else if (code.startsWith(q) || compactCode.startsWith(compact)) rank = 1;
+    else if (code.includes(q) || (compact && compactCode.includes(compact))) rank = 2;
+    else if (other.includes(q)) rank = 3;
+    return { p, index, rank };
+  }).filter(item => item.rank < 99).sort((a, b) => a.rank - b.rank || a.index - b.index).map(item => item.p);
+  render(matches);
 }
 $("#search").addEventListener("click", () => filter()); $("#query").addEventListener("keydown", e => { if (e.key === "Enter") filter(); }); $("#reset").addEventListener("click", () => { $("#query").value = ""; filter(); }); $("#more").addEventListener("click", () => { visibleCount += PAGE_SIZE; render(activeList, false); }); $("#close").addEventListener("click", () => $("#shade").classList.remove("open")); $("#shade").addEventListener("click", e => { if (e.target === $("#shade")) $("#shade").classList.remove("open"); }); $("#chart-overlay-close").addEventListener("click", () => $("#chart-overlay").classList.remove("open")); $("#chart-overlay").addEventListener("click", e => { if (e.target === $("#chart-overlay")) $("#chart-overlay").classList.remove("open"); }); document.addEventListener("keydown", e => { if (e.key === "Escape") { $("#chart-overlay").classList.remove("open"); $("#shade").classList.remove("open"); } }); const initialQuery = new URLSearchParams(location.search).get("code") || ""; if (initialQuery) { $("#query").value = initialQuery; filter(false); } else render(products);
 </script>
