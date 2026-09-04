@@ -346,7 +346,7 @@ def main() -> None:
                 starts.append(row_no)
         starts.sort()
         products: list[dict] = []
-        title = text_value(rows.get(0, {}).get(0, "")) or "MUAN 商品资料"
+        title = "商品资料表"
         for index, start in enumerate(starts):
             end = starts[index + 1] if index + 1 < len(starts) else max(rows) + 1
             base = rows[start]
