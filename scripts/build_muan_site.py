@@ -167,7 +167,7 @@ def extract_size_table(rows: dict[int, dict[int, str]], start: int, end: int) ->
         row = rows.get(row_no, {})
         label = text_value(row.get(8, ""))
         values = [text_value(row.get(col, "")) for col in range(9, 14)]
-        if label in SIZE_HEADER_LABELS or (label == "尺码表" and any(values)):
+        if label in SIZE_HEADER_LABELS or label.startswith(("尺码", "尺寸", "码数")):
             if any(values):
                 candidates.append(row_no)
         elif not label and any(values) and row_no + 1 < end:
@@ -192,7 +192,7 @@ def extract_size_table(rows: dict[int, dict[int, str]], start: int, end: int) ->
                 if measurements:
                     break
                 continue
-            if label in SIZE_HEADER_LABELS and any(values):
+            if label in SIZE_HEADER_LABELS or label.startswith(("尺码", "尺寸", "码数")):
                 break
             if label and any(values):
                 measurements.append((label, values[:len(raw_headers)]))
@@ -200,6 +200,25 @@ def extract_size_table(rows: dict[int, dict[int, str]], start: int, end: int) ->
                 break
         if measurements:
             return raw_headers, measurements
+
+    # Some one-size products have measurement rows but no size names at all.
+    # Keep those source values visible with a neutral header instead of dropping
+    # the table or inventing a size label.
+    fallback: list[tuple[str, list[str]]] = []
+    max_columns = 0
+    for row_no in range(start, end):
+        row = rows.get(row_no, {})
+        label = text_value(row.get(8, ""))
+        values = [text_value(row.get(col, "")) for col in range(9, 14)]
+        if label and any(values) and not (label in SIZE_HEADER_LABELS or label.startswith(("尺码", "尺寸", "码数"))):
+            fallback.append((label, values))
+            max_columns = max(max_columns, max((index + 1 for index, value in enumerate(values) if value), default=0))
+        elif fallback and not label and not any(values):
+            break
+    if fallback and max_columns:
+        return ["数值"] if max_columns == 1 else [f"规格{index + 1}" for index in range(max_columns)], [
+            (label, values[:max_columns]) for label, values in fallback
+        ]
 
     return [], []
 
@@ -234,12 +253,13 @@ button,input{{font:inherit}} button{{cursor:pointer}} .top{{background:linear-gr
 .detail{{display:grid;grid-template-columns:minmax(250px,330px) 1fr;gap:24px;padding:22px}} .hero{{border:1px solid var(--line);border-radius:9px;background:#f1f4f6;display:flex;align-items:center;justify-content:center;min-height:250px}} .hero img{{width:100%;height:100%;max-height:430px;object-fit:contain}}
 .section{{margin-bottom:22px}} .section h3{{font-size:14px;color:var(--accent);margin:0 0 10px;border-bottom:2px solid var(--soft);padding-bottom:8px}} .facts{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}} .fact{{background:#f7f9fb;border-radius:7px;padding:10px 12px}} .fact small{{display:block;color:var(--muted);font-size:11px;margin-bottom:4px}} .fact div{{white-space:pre-wrap;line-height:1.5;word-break:break-word}}
 .long{{white-space:pre-wrap;line-height:1.65;color:#334155;background:#f7f9fb;border-radius:7px;padding:12px}} .chart{{display:block;width:100%;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:zoom-in}} .chart-note{{margin-top:8px;color:var(--muted);font-size:12px}} .actions{{display:flex;justify-content:flex-end;gap:10px;margin-top:12px;flex-wrap:wrap}} .action{{border:1px solid var(--line);border-radius:7px;padding:9px 13px;background:#fff;color:var(--ink)}} .action.primary{{background:var(--accent);border-color:var(--accent);color:#fff}} .chart-overlay{{display:none;position:fixed;inset:0;background:#081c2ce6;z-index:20;padding:24px;align-items:center;justify-content:center}} .chart-overlay.open{{display:flex}} .chart-overlay img{{max-width:100%;max-height:100%;object-fit:contain;background:#fff;border-radius:8px}} .chart-overlay-close{{position:absolute;top:12px;right:18px;border:0;background:transparent;color:#fff;font-size:34px;line-height:1;cursor:pointer}}
+.more-wrap{{display:flex;justify-content:center;margin:24px 0 4px}} .more-wrap button{{border:1px solid var(--line);border-radius:7px;padding:10px 16px;background:var(--paper);color:var(--ink)}}
 @media(max-width:680px){{.top{{padding:22px 16px 24px}} .wrap{{padding:18px 16px 40px}} .search button{{padding:0 16px}} .detail{{grid-template-columns:1fr;padding:16px;gap:16px}} .hero{{min-height:220px}} .facts{{grid-template-columns:1fr}} .modal-head{{padding:15px 16px}}}}
 </style>
 </head>
 <body>
 <header class="top"><div class="top-inner"><div class="eyebrow">MUAN PRODUCT LIBRARY</div><h1>{page_title}</h1><div class="search"><input id="query" placeholder="输入货号，例如 660002" autocomplete="off"><button id="search">查询</button></div></div></header>
-<main class="wrap"><div class="toolbar"><div id="stats"></div><button class="reset" id="reset">显示全部</button></div><section class="grid" id="grid"></section></main>
+<main class="wrap"><div class="toolbar"><div id="stats"></div><button class="reset" id="reset">显示全部</button></div><section class="grid" id="grid"></section><div class="more-wrap"><button id="more" hidden>加载更多</button></div></main>
 <div class="shade" id="shade"><article class="modal"><div class="modal-head"><h2 id="modal-title"></h2><button class="close" id="close" aria-label="关闭">×</button></div><div id="modal-body"></div></article></div>
 <div class="chart-overlay" id="chart-overlay" role="dialog" aria-modal="true" aria-label="放大尺码表"><button class="chart-overlay-close" id="chart-overlay-close" aria-label="关闭放大图">×</button><img id="chart-preview" alt="放大尺码表"></div>
 <script>
@@ -247,9 +267,17 @@ const products = {product_json};
 const $ = (s) => document.querySelector(s);
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, c => c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : c === String.fromCharCode(34) ? "&quot;" : "&#39;");
 const nl = (v) => esc(v).replace(/\\n/g,"<br>");
-function render(list) {{
-  $("#stats").innerHTML = `共 <strong>${{products.length}}</strong> 个商品，当前显示 <strong>${{list.length}}</strong> 个`;
-  $("#grid").innerHTML = list.length ? list.map((p,i) => `<article class="card" data-index="${{products.indexOf(p)}}"><div class="thumb">${{p.product_image ? `<img src="${{esc(p.product_image)}}" loading="lazy" alt="${{esc(p.code)}}">` : "<span>暂无图片</span>"}}</div><div class="card-body"><div class="code">${{esc(p.code)}}</div><div class="meta"><span class="pill">${{esc(p.color || "颜色待补")}}</span><span>${{esc(p.material || "材质待补")}}</span></div></div></article>`).join("") : '<div class="empty">没有找到匹配的货号</div>';
+const PAGE_SIZE = 120;
+let activeList = products;
+let visibleCount = PAGE_SIZE;
+function render(list, resetPage = true) {{
+  if (resetPage) {{ activeList = list; visibleCount = PAGE_SIZE; }}
+  const shown = activeList.slice(0, visibleCount);
+  $("#stats").innerHTML = `共 <strong>${{products.length}}</strong> 个商品，当前结果 <strong>${{activeList.length}}</strong> 个，已显示 <strong>${{shown.length}}</strong> 个`;
+  $("#grid").innerHTML = shown.length ? shown.map(p => `<article class="card" data-index="${{products.indexOf(p)}}"><div class="thumb">${{p.product_image ? `<img src="${{esc(p.product_image)}}" loading="lazy" alt="${{esc(p.code)}}">` : "<span>暂无图片</span>"}}</div><div class="card-body"><div class="code">${{esc(p.code)}}</div><div class="meta"><span class="pill">${{esc(p.color || "颜色待补")}}</span><span>${{esc(p.material || "材质待补")}}</span></div></div></article>`).join("") : '<div class="empty">没有找到匹配的货号</div>';
+  const more = $("#more");
+  more.hidden = shown.length >= activeList.length;
+  more.textContent = `加载更多（剩余 ${{Math.max(0, activeList.length - shown.length)}} 条）`;
   document.querySelectorAll(".card").forEach(card => card.addEventListener("click", () => show(Number(card.dataset.index))));
 }}
 function show(i) {{
@@ -276,8 +304,15 @@ function show(i) {{
     }});
   }}
 }}
-function filter() {{ const q = $("#query").value.trim().toLowerCase(); render(q ? products.filter(p => [p.code,p.color,p.material,p.highlight].join(" ").toLowerCase().includes(q)) : products); }}
-$("#search").addEventListener("click", filter); $("#query").addEventListener("keydown", e => {{ if (e.key === "Enter") filter(); }}); $("#reset").addEventListener("click", () => {{ $("#query").value = ""; render(products); }}); $("#close").addEventListener("click", () => $("#shade").classList.remove("open")); $("#shade").addEventListener("click", e => {{ if (e.target === $("#shade")) $("#shade").classList.remove("open"); }}); $("#chart-overlay-close").addEventListener("click", () => $("#chart-overlay").classList.remove("open")); $("#chart-overlay").addEventListener("click", e => {{ if (e.target === $("#chart-overlay")) $("#chart-overlay").classList.remove("open"); }}); render(products);
+function filter(syncUrl = true) {{
+  const raw = $("#query").value.trim();
+  const q = raw.toLowerCase();
+  if (syncUrl) history.replaceState(null, "", raw ? `?code=${{encodeURIComponent(raw)}}` : location.pathname);
+  if (!q) return render(products);
+  const exact = products.filter(p => String(p.code || "").trim().toLowerCase() === q);
+  render(exact.length ? exact : products.filter(p => [p.code,p.color,p.material,p.highlight].join(" ").toLowerCase().includes(q)));
+}}
+$("#search").addEventListener("click", () => filter()); $("#query").addEventListener("keydown", e => {{ if (e.key === "Enter") filter(); }}); $("#reset").addEventListener("click", () => {{ $("#query").value = ""; filter(); }}); $("#more").addEventListener("click", () => {{ visibleCount += PAGE_SIZE; render(activeList, false); }}); $("#close").addEventListener("click", () => $("#shade").classList.remove("open")); $("#shade").addEventListener("click", e => {{ if (e.target === $("#shade")) $("#shade").classList.remove("open"); }}); $("#chart-overlay-close").addEventListener("click", () => $("#chart-overlay").classList.remove("open")); $("#chart-overlay").addEventListener("click", e => {{ if (e.target === $("#chart-overlay")) $("#chart-overlay").classList.remove("open"); }}); document.addEventListener("keydown", e => {{ if (e.key === "Escape") {{ $("#chart-overlay").classList.remove("open"); $("#shade").classList.remove("open"); }} }}); const initialQuery = new URLSearchParams(location.search).get("code") || ""; if (initialQuery) {{ $("#query").value = initialQuery; filter(false); }} else render(products);
 </script>
 </body>
 </html>'''
