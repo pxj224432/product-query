@@ -264,7 +264,7 @@ button,input{{font:inherit}} button{{cursor:pointer}} .top{{background:linear-gr
 <div class="chart-overlay" id="chart-overlay" role="dialog" aria-modal="true" aria-label="放大尺码表"><button class="chart-overlay-close" id="chart-overlay-close" aria-label="关闭放大图">×</button><img id="chart-preview" alt="放大尺码表"></div>
 <script>
 const products = {product_json};
-const videoByCode = {{"5988":"data/videos/5988_installation.mp4"}};
+const videoByCode = {{"5988":"data/videos/5988_installation.mp4","GZ-B2319":"data/videos/GZ-B2319_installation.mp4"}};
 products.forEach(p => {{ if (videoByCode[p.code]) p.installation_video = videoByCode[p.code]; }});
 const $ = (s) => document.querySelector(s);
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, c => c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : c === String.fromCharCode(34) ? "&quot;" : "&#39;");
