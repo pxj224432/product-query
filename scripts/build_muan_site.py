@@ -31,6 +31,7 @@ NS = {"m": MAIN_NS, "r": REL_NS, "etc": ETC_NS, "xdr": XDR_NS, "a": DRAW_NS}
 IMAGE_EDGE = 1000
 IMAGE_QUALITY = 78
 FONT_PATH = "/System/Library/Fonts/STHeiti Medium.ttc"
+SIZE_HEADER_LABELS = {"尺码", "尺寸", "尺寸表", "码数", "尺码（高个子）", "小个子尺寸"}
 
 
 def col_index(ref: str) -> int:
@@ -153,6 +154,54 @@ def make_size_chart(code: str, headers: list[str], measurements: list[tuple[str,
     output.parent.mkdir(parents=True, exist_ok=True)
     canvas.save(output, format="PNG", optimize=True)
     return True
+
+
+def extract_size_table(rows: dict[int, dict[int, str]], start: int, end: int) -> tuple[list[str], list[tuple[str, list[str]]]]:
+    """Find the first usable size table inside one product block.
+
+    WPS exports use several labels (尺寸, 尺码表, etc.) and sometimes put a
+    section title on one row and the actual size header on the next row.
+    """
+    candidates: list[int] = []
+    for row_no in range(start, end):
+        row = rows.get(row_no, {})
+        label = text_value(row.get(8, ""))
+        values = [text_value(row.get(col, "")) for col in range(9, 14)]
+        if label in SIZE_HEADER_LABELS or (label == "尺码表" and any(values)):
+            if any(values):
+                candidates.append(row_no)
+        elif not label and any(values) and row_no + 1 < end:
+            next_row = rows.get(row_no + 1, {})
+            next_label = text_value(next_row.get(8, ""))
+            next_values = [text_value(next_row.get(col, "")) for col in range(9, 14)]
+            if next_label and any(re.search(r"\d", value) for value in next_values):
+                candidates.append(row_no)
+
+    for header_row in candidates:
+        raw_headers = [text_value(rows[header_row].get(col, "")) for col in range(9, 14)]
+        while raw_headers and not raw_headers[-1]:
+            raw_headers.pop()
+        if not raw_headers:
+            continue
+        measurements: list[tuple[str, list[str]]] = []
+        for row_no in range(header_row + 1, end):
+            row = rows.get(row_no, {})
+            label = text_value(row.get(8, ""))
+            values = [text_value(row.get(col, "")) for col in range(9, 14)]
+            if not label and not any(values):
+                if measurements:
+                    break
+                continue
+            if label in SIZE_HEADER_LABELS and any(values):
+                break
+            if label and any(values):
+                measurements.append((label, values[:len(raw_headers)]))
+            elif measurements:
+                break
+        if measurements:
+            return raw_headers, measurements
+
+    return [], []
 
 
 def html_escape(value: object) -> str:
@@ -296,20 +345,7 @@ def main() -> None:
                     except Exception:
                         pass
 
-            header_row = rows.get(start, {})
-            headers = []
-            if text_value(header_row.get(8, "")) == "尺码":
-                for col in range(9, 14):
-                    value = text_value(header_row.get(col, ""))
-                    if value:
-                        headers.append(value)
-            measurements: list[tuple[str, list[str]]] = []
-            for row_no in range(start + 1, end):
-                row = rows.get(row_no, {})
-                label = text_value(row.get(8, ""))
-                values = [text_value(row.get(col, "")) for col in range(9, 14)]
-                if label and any(values):
-                    measurements.append((label, values[:len(headers)] if headers else values))
+            headers, measurements = extract_size_table(rows, start, end)
             chart_name = f"p{index + 1:04d}_{re.sub(r'[^A-Za-z0-9_-]+', '_', code)}_size.png"
             chart_path = chart_dir / chart_name
             if make_size_chart(code, headers, measurements, chart_path):
