@@ -184,7 +184,7 @@ button,input{{font:inherit}} button{{cursor:pointer}} .top{{background:linear-gr
 .modal-head{{display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid var(--line);position:sticky;top:0;background:#fff;z-index:2}} .modal-head h2{{margin:0;font-size:22px}} .close{{border:0;background:transparent;font-size:28px;color:var(--muted);line-height:1}}
 .detail{{display:grid;grid-template-columns:minmax(250px,330px) 1fr;gap:24px;padding:22px}} .hero{{border:1px solid var(--line);border-radius:9px;background:#f1f4f6;display:flex;align-items:center;justify-content:center;min-height:250px}} .hero img{{width:100%;height:100%;max-height:430px;object-fit:contain}}
 .section{{margin-bottom:22px}} .section h3{{font-size:14px;color:var(--accent);margin:0 0 10px;border-bottom:2px solid var(--soft);padding-bottom:8px}} .facts{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}} .fact{{background:#f7f9fb;border-radius:7px;padding:10px 12px}} .fact small{{display:block;color:var(--muted);font-size:11px;margin-bottom:4px}} .fact div{{white-space:pre-wrap;line-height:1.5;word-break:break-word}}
-.long{{white-space:pre-wrap;line-height:1.65;color:#334155;background:#f7f9fb;border-radius:7px;padding:12px}} .chart{{width:100%;border:1px solid var(--line);border-radius:8px;background:#fff}} .actions{{display:flex;justify-content:flex-end;gap:10px;margin-top:12px}} .action{{border:1px solid var(--line);border-radius:7px;padding:9px 13px;background:#fff;color:var(--ink)}} .action.primary{{background:var(--accent);border-color:var(--accent);color:#fff}}
+.long{{white-space:pre-wrap;line-height:1.65;color:#334155;background:#f7f9fb;border-radius:7px;padding:12px}} .chart{{display:block;width:100%;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:zoom-in}} .chart-note{{margin-top:8px;color:var(--muted);font-size:12px}} .actions{{display:flex;justify-content:flex-end;gap:10px;margin-top:12px;flex-wrap:wrap}} .action{{border:1px solid var(--line);border-radius:7px;padding:9px 13px;background:#fff;color:var(--ink)}} .action.primary{{background:var(--accent);border-color:var(--accent);color:#fff}} .chart-overlay{{display:none;position:fixed;inset:0;background:#081c2ce6;z-index:20;padding:24px;align-items:center;justify-content:center}} .chart-overlay.open{{display:flex}} .chart-overlay img{{max-width:100%;max-height:100%;object-fit:contain;background:#fff;border-radius:8px}} .chart-overlay-close{{position:absolute;top:12px;right:18px;border:0;background:transparent;color:#fff;font-size:34px;line-height:1;cursor:pointer}}
 @media(max-width:680px){{.top{{padding:22px 16px 24px}} .wrap{{padding:18px 16px 40px}} .search button{{padding:0 16px}} .detail{{grid-template-columns:1fr;padding:16px;gap:16px}} .hero{{min-height:220px}} .facts{{grid-template-columns:1fr}} .modal-head{{padding:15px 16px}}}}
 </style>
 </head>
@@ -192,6 +192,7 @@ button,input{{font:inherit}} button{{cursor:pointer}} .top{{background:linear-gr
 <header class="top"><div class="top-inner"><div class="eyebrow">MUAN PRODUCT LIBRARY</div><h1>{page_title}</h1><div class="search"><input id="query" placeholder="输入货号，例如 660002" autocomplete="off"><button id="search">查询</button></div></div></header>
 <main class="wrap"><div class="toolbar"><div id="stats"></div><button class="reset" id="reset">显示全部</button></div><section class="grid" id="grid"></section></main>
 <div class="shade" id="shade"><article class="modal"><div class="modal-head"><h2 id="modal-title"></h2><button class="close" id="close" aria-label="关闭">×</button></div><div id="modal-body"></div></article></div>
+<div class="chart-overlay" id="chart-overlay" role="dialog" aria-modal="true" aria-label="放大尺码表"><button class="chart-overlay-close" id="chart-overlay-close" aria-label="关闭放大图">×</button><img id="chart-preview" alt="放大尺码表"></div>
 <script>
 const products = {product_json};
 const $ = (s) => document.querySelector(s);
@@ -207,13 +208,27 @@ function show(i) {{
   const facts = [["颜色",p.color],["面料及成分",p.material],["订货日期",p.order_date],["订货数量",p.order_qty],["裁剪数量",p.cut_qty],["出货日期",p.ship_date]].filter(x => x[1]);
   let body = `<div class="detail"><div><div class="hero">${{p.product_image ? `<img src="${{esc(p.product_image)}}" alt="${{esc(p.code)}}">` : "<span>暂无商品图</span>"}}</div><div class="actions">${{p.product_image ? `<a class="action" href="${{esc(p.product_image)}}" target="_blank" rel="noreferrer">查看原图</a>` : ""}}<button class="action primary" id="copy">复制资料</button></div></div><div>`;
   body += `<section class="section"><h3>基础资料</h3><div class="facts">${{facts.map(x => `<div class="fact"><small>${{esc(x[0])}}</small><div>${{nl(x[1])}}</div></div>`).join("")}}</div></section>`;
+  if (p.size_chart) body += `<section class="section"><h3>尺码表</h3><img class="chart" id="chart" src="${{esc(p.size_chart)}}" alt="${{esc(p.code)}} 尺码表" loading="eager" tabindex="0"><div class="chart-note">点击图片可放大查看</div><div class="actions"><button class="action" id="copy-chart">复制尺码表图片</button><a class="action" href="${{esc(p.size_chart)}}" download="${{esc(p.code)}}-尺码表.png">下载尺码表图片</a></div></section>`;
   if (p.highlight) body += `<section class="section"><h3>卖点 / 备注</h3><div class="long">${{nl(p.highlight)}}</div></section>`;
-  if (p.size_chart) body += `<section class="section"><h3>尺码表</h3><img class="chart" src="${{esc(p.size_chart)}}" alt="${{esc(p.code)}} 尺码表"><div class="actions"><a class="action" href="${{esc(p.size_chart)}}" download="${{esc(p.code)}}-尺码表.png">下载尺码表图片</a></div></section>`;
   body += `</div></div>`; $("#modal-body").innerHTML = body; $("#shade").classList.add("open");
   $("#copy").addEventListener("click", async () => {{ const text = [p.code && `货号：${{p.code}}`,p.color && `颜色：${{p.color}}`,p.material && `面料及成分：${{p.material}}`,p.order_date && `订货日期：${{p.order_date}}`,p.order_qty && `订货数量：${{p.order_qty}}`,p.cut_qty && `裁剪数量：${{p.cut_qty}}`,p.ship_date && `出货日期：${{p.ship_date}}`,p.highlight && `卖点/备注：\\n${{p.highlight}}`].filter(Boolean).join("\\n"); try {{ await navigator.clipboard.writeText(text); $("#copy").textContent = "已复制"; }} catch {{ $("#copy").textContent = "请手动复制"; }} }});
+  if (p.size_chart) {{
+    const chart = $("#chart");
+    const openChart = () => {{ $("#chart-preview").src = p.size_chart; $("#chart-overlay").classList.add("open"); }};
+    chart.addEventListener("click", openChart);
+    chart.addEventListener("keydown", e => {{ if (e.key === "Enter" || e.key === " ") {{ e.preventDefault(); openChart(); }} }});
+    $("#copy-chart").addEventListener("click", async () => {{
+      const button = $("#copy-chart");
+      try {{
+        const blob = await fetch(p.size_chart).then(r => r.blob());
+        await navigator.clipboard.write([new ClipboardItem({{"image/png": blob}})]);
+        button.textContent = "已复制图片";
+      }} catch {{ button.textContent = "请长按图片复制"; }}
+    }});
+  }}
 }}
 function filter() {{ const q = $("#query").value.trim().toLowerCase(); render(q ? products.filter(p => [p.code,p.color,p.material,p.highlight].join(" ").toLowerCase().includes(q)) : products); }}
-$("#search").addEventListener("click", filter); $("#query").addEventListener("keydown", e => {{ if (e.key === "Enter") filter(); }}); $("#reset").addEventListener("click", () => {{ $("#query").value = ""; render(products); }}); $("#close").addEventListener("click", () => $("#shade").classList.remove("open")); $("#shade").addEventListener("click", e => {{ if (e.target === $("#shade")) $("#shade").classList.remove("open"); }}); render(products);
+$("#search").addEventListener("click", filter); $("#query").addEventListener("keydown", e => {{ if (e.key === "Enter") filter(); }}); $("#reset").addEventListener("click", () => {{ $("#query").value = ""; render(products); }}); $("#close").addEventListener("click", () => $("#shade").classList.remove("open")); $("#shade").addEventListener("click", e => {{ if (e.target === $("#shade")) $("#shade").classList.remove("open"); }}); $("#chart-overlay-close").addEventListener("click", () => $("#chart-overlay").classList.remove("open")); $("#chart-overlay").addEventListener("click", e => {{ if (e.target === $("#chart-overlay")) $("#chart-overlay").classList.remove("open"); }}); render(products);
 </script>
 </body>
 </html>'''
